@@ -5,6 +5,7 @@ import '../widgets/question_widget.dart';
 import '../widgets/next_button.dart';
 import '../widgets/option_card.dart';
 import '../widgets/result_box.dart';
+import '../models/db_connect.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -14,32 +15,44 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Question> _questions = [
-    Question(
-      id: '10',
-      title: 'what is 2 + 2?',
-      options: {'5': false, '30': false, '4': true, '10': false},
-    ),
-    Question(
-      id: '11',
-      title: 'what is 3 + 3?',
-      options: {'5': false, '30': false, '6': true, '10': false},
-    ),
-  ];
+  var db = DBconnect();
+  // List<Question> _questions = [
+  //   Question(
+  //     id: '10',
+  //     title: 'what is 2 + 2?',
+  //     options: {'5': false, '30': false, '4': true, '10': false},
+  //   ),
+  //   Question(
+  //     id: '11',
+  //     title: 'what is 3 + 3?',
+  //     options: {'5': false, '30': false, '6': true, '10': false},
+  //   ),
+  // ];
+  late Future _questions;
+
+  Future<List<Question>> getData() async {
+    return db.fetchQuestions();
+  }
+
+  @override
+  void initState() {
+    _questions = getData();
+    super.initState();
+  }
 
   int index = 0;
   int score = 0;
   bool isPressed = false;
   bool isAlreadySelected = false;
 
-  void nextQuestion() {
-    if (index == _questions.length - 1) {
+  void nextQuestion(int questionLength) {
+    if (index == questionLength - 1) {
       showDialog(
           context: context,
           barrierDismissible: false,
           builder: (ctx) => ResultBox(
                 result: score,
-                questionLength: _questions.length,
+                questionLength: questionLength,
                 onPressed: startOver,
               ));
     } else {
@@ -85,56 +98,100 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
-          title: const Text('Quiz App'),
-          backgroundColor: background,
-          shadowColor: Colors.transparent,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.all(18.0),
-              child: Text(
-                'Score: $score',
-                style: const TextStyle(fontSize: 18.0),
+    return FutureBuilder(
+      future: _questions as Future<List<Question>>,
+      builder: (ctx, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('${snapshot.error}'),
+            );
+          } else if (snapshot.hasData) {
+            var extractedData = snapshot.data as List<Question>;
+            return Scaffold(
+              backgroundColor: background,
+              appBar: AppBar(
+                title: const Text('Quiz App'),
+                backgroundColor: background,
+                shadowColor: Colors.transparent,
+                actions: [
+                  Padding(
+                    padding: const EdgeInsets.all(18.0),
+                    child: Text(
+                      'Score: $score',
+                      style: const TextStyle(fontSize: 18.0),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ]),
-      body: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10.0),
-        child: Column(
-          children: [
-            QuestionWidget(
-              indexAction: index,
-              question: _questions[index].title,
-              totalQuestions: _questions.length,
-            ),
-            const Divider(color: neutral),
-            const SizedBox(height: 25.0),
-            for (int i = 0; i < _questions[index].options.length; i++)
-              GestureDetector(
-                onTap: () => checkAnswerAndUpdate(
-                    _questions[index].options.values.toList()[i]),
-                child: OptionCard(
-                  option: _questions[index].options.keys.toList()[i],
-                  color: isPressed
-                      ? _questions[index].options.values.toList()[i] == true
-                          ? correct
-                          : incorrect
-                      : neutral,
+              body: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                child: Column(
+                  children: [
+                    QuestionWidget(
+                      indexAction: index,
+                      question: extractedData[index].title,
+                      totalQuestions: extractedData.length,
+                    ),
+                    const Divider(color: neutral),
+                    const SizedBox(height: 25.0),
+                    for (int i = 0;
+                        i < extractedData[index].options.length;
+                        i++)
+                      GestureDetector(
+                        onTap: () => checkAnswerAndUpdate(
+                            extractedData[index].options.values.toList()[i]),
+                        child: OptionCard(
+                          option: extractedData[index].options.keys.toList()[i],
+                          color: isPressed
+                              ? extractedData[index]
+                                          .options
+                                          .values
+                                          .toList()[i] ==
+                                      true
+                                  ? correct
+                                  : incorrect
+                              : neutral,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-          ],
-        ),
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10.0),
-        child: NextButton(
-          nextQuestion: nextQuestion,
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+              floatingActionButton: GestureDetector(
+                onTap: () => nextQuestion(extractedData.length),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10.0),
+                  child: NextButton(),
+                ),
+              ),
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerFloat,
+            );
+          }
+        } else {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20.0),
+                Text('Please Wait while Questions are loading..',
+                    style: TextStyle(
+                      color: Theme.of(context).primaryColor,
+                      decoration: TextDecoration.none,
+                      fontSize: 16.0,
+                    ))
+              ],
+            ),
+          );
+        }
+
+        return const Center(
+          child: Text('No Data'),
+        );
+      },
     );
   }
 }
